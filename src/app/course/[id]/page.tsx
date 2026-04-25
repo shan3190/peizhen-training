@@ -1,236 +1,195 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
+'use client'
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 interface Chapter {
-  id: string;
-  title: string;
-  content: string;
-  duration: number;
-  order_index: number;
-  is_completed?: boolean;
+  id: number
+  title: string
+  order_index: number
 }
 
 interface Course {
-  id: string;
-  title: string;
-  description: string;
+  id: number
+  title: string
+  description: string
+}
+
+interface Progress {
+  chapter_id: number
+  is_completed: boolean
+}
+
+const courseNames: Record<number, string> = {
+  1: '陪诊服务概述',
+  2: '服务流程',
+  3: '医疗常识',
+  4: '法律法规',
+  5: '急救技能',
+  6: '职业礼仪',
 }
 
 export default function CoursePage() {
-  const params = useParams();
-  const router = useRouter();
-  const courseId = params.id as string;
-  const [course, setCourse] = useState<Course | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const params = useParams()
+  const router = useRouter()
+  const courseId = Number(params.id)
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [progress, setProgress] = useState<Progress[]>([])
+  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<any>(null)
+
+  const courseName = courseNames[courseId] || '课程'
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      setUserId(user.id);
+    const userData = localStorage.getItem('peizhen_user')
+    if (!userData) {
+      router.push('/login')
+      return
     }
-  }, []);
+    setUser(JSON.parse(userData))
+    
+    fetchChapters()
+    fetchProgress()
+  }, [courseId])
 
-  useEffect(() => {
-    if (!courseId) return;
-
-    const fetchCourse = async () => {
-      try {
-        const headers: Record<string, string> = {};
-        if (userId) headers['x-user-id'] = userId;
-
-        const res = await fetch(`/api/courses/${courseId}`, { headers });
-        const data = await res.json();
-
-        if (data.success) {
-          setCourse(data.course);
-          setChapters(data.chapters || []);
-          if (data.chapters?.length > 0) {
-            setSelectedChapter(data.chapters[0]);
-          }
-        }
-      } catch (error) {
-        console.error('获取课程失败:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCourse();
-  }, [courseId, userId]);
-
-  const markComplete = async (chapterId: string) => {
-    if (!userId) {
-      alert('请先登录');
-      router.push('/login');
-      return;
-    }
-
-    setSaving(true);
+  const fetchChapters = async () => {
     try {
-      const res = await fetch('/api/progress', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': userId
-        },
-        body: JSON.stringify({
-          course_id: courseId,
-          chapter_id: chapterId,
-          is_completed: true
-        })
-      });
-
-      const data = await res.json();
+      const res = await fetch(`/api/courses/${courseId}`)
+      const data = await res.json()
       if (data.success) {
-        setChapters(prev =>
-          prev.map(ch =>
-            ch.id === chapterId ? { ...ch, is_completed: true } : ch
-          )
-        );
-        if (selectedChapter?.id === chapterId) {
-          setSelectedChapter(prev => prev ? { ...prev, is_completed: true } : null);
-        }
+        setChapters(data.chapters || [])
       }
     } catch (error) {
-      console.error('标记完成失败:', error);
+      console.error('获取章节失败:', error)
     } finally {
-      setSaving(false);
+      setLoading(false)
     }
-  };
-
-  const completedCount = chapters.filter(ch => ch.is_completed).length;
-  const progress = chapters.length > 0 ? Math.round((completedCount / chapters.length) * 100) : 0;
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-500">加载中...</div>
-      </div>
-    );
   }
 
+  const fetchProgress = async () => {
+    try {
+      const userData = JSON.parse(localStorage.getItem('peizhen_user') || '{}')
+      const res = await fetch(`/api/progress?userId=${userData.id}&courseId=${courseId}`)
+      const data = await res.json()
+      if (data.success) {
+        setProgress(data.progress || [])
+      }
+    } catch (error) {
+      console.error('获取进度失败:', error)
+    }
+  }
+
+  const handleChapterClick = async (chapterId: number) => {
+    const userData = JSON.parse(localStorage.getItem('peizhen_user') || '{}')
+    
+    try {
+      await fetch('/api/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userData.id,
+          courseId,
+          chapterId,
+        }),
+      })
+      fetchProgress()
+    } catch (error) {
+      console.error('更新进度失败:', error)
+    }
+  }
+
+  const isChapterCompleted = (chapterId: number) => {
+    return progress.some(p => p.chapter_id === chapterId && p.is_completed)
+  }
+
+  const completedCount = progress.filter(p => p.is_completed).length
+  const progressPercent = chapters.length > 0 
+    ? Math.round((completedCount / chapters.length) * 100) 
+    : 0
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 顶部导航 */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/main" className="text-gray-500 hover:text-gray-700">
-              ← 返回
-            </Link>
-            <span className="text-gray-300">|</span>
-            <span className="font-semibold text-gray-800">{course?.title}</span>
-          </div>
-          {!userId && (
-            <Link href="/login" className="text-blue-600 hover:text-blue-700">
-              登录查看学习进度
-            </Link>
-          )}
+    <div className="page-container">
+      {/* Header */}
+      <div className="header">
+        <div className="header-left">
+          <Link href="/main" style={{ fontSize: '20px', color: '#1e40af' }}>←</Link>
+          <span style={{ fontWeight: 600 }}>{courseName}</span>
         </div>
       </div>
 
-      {/* 进度条 */}
-      {userId && (
-        <div className="bg-white border-b px-4 py-3">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 transition-all duration-300"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
-              <span className="text-sm text-gray-600">
-                {completedCount}/{chapters.length} 已完成 ({progress}%)
-              </span>
-            </div>
+      <div className="content">
+        <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>{courseName}</h1>
+        
+        {/* Progress */}
+        <div style={{ background: 'white', padding: '20px', borderRadius: '12px', marginBottom: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ color: '#6b7280' }}>学习进度</span>
+            <span style={{ color: '#1e40af', fontWeight: 600 }}>{completedCount}/{chapters.length} 章节</span>
+          </div>
+          <div style={{ background: '#e5e7eb', height: '8px', borderRadius: '4px' }}>
+            <div 
+              style={{ 
+                background: '#1e40af', 
+                height: '100%', 
+                borderRadius: '4px',
+                width: `${progressPercent}%`,
+                transition: 'width 0.3s'
+              }} 
+            />
           </div>
         </div>
-      )}
 
-      <div className="max-w-7xl mx-auto flex">
-        {/* 章节列表 */}
-        <div className="w-80 bg-white border-r min-h-screen">
-          <div className="p-4 border-b bg-gray-50">
-            <h2 className="font-semibold text-gray-800">课程章节</h2>
+        {/* Chapters */}
+        <h2 style={{ fontSize: '18px', marginBottom: '16px' }}>课程章节</h2>
+        {loading ? (
+          <p style={{ color: '#6b7280' }}>加载中...</p>
+        ) : chapters.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+            <p>暂无章节内容</p>
+            <p style={{ fontSize: '14px', marginTop: '8px' }}>请联系管理员添加课程内容</p>
           </div>
-          <div className="py-2">
-            {chapters.map((chapter, index) => (
-              <button
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {chapters.map((chapter) => (
+              <div 
                 key={chapter.id}
-                onClick={() => setSelectedChapter(chapter)}
-                className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors ${
-                  selectedChapter?.id === chapter.id ? 'bg-blue-50 border-r-2 border-blue-600' : ''
-                }`}
+                onClick={() => handleChapterClick(chapter.id)}
+                style={{ 
+                  background: 'white', 
+                  padding: '16px 20px', 
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  transition: 'transform 0.2s'
+                }}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${
-                  chapter.is_completed
-                    ? 'bg-green-500 text-white'
-                    : 'bg-gray-200 text-gray-500'
-                }`}>
-                  {chapter.is_completed ? '✓' : index + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm truncate ${
-                    chapter.is_completed ? 'text-green-700' : 'text-gray-700'
-                  }`}>
-                    {chapter.title}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: isChapterCompleted(chapter.id) ? '#10b981' : '#e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: isChapterCompleted(chapter.id) ? 'white' : '#6b7280',
+                    fontSize: '14px'
+                  }}>
+                    {isChapterCompleted(chapter.id) ? '✓' : chapter.order_index}
                   </div>
-                  <div className="text-xs text-gray-400">{chapter.duration}分钟</div>
+                  <span style={{ fontWeight: 500 }}>{chapter.title}</span>
                 </div>
-              </button>
+                <span style={{ color: '#10b981', fontSize: '14px' }}>
+                  {isChapterCompleted(chapter.id) ? '已完成' : '未完成'}
+                </span>
+              </div>
             ))}
           </div>
-        </div>
-
-        {/* 章节内容 */}
-        <div className="flex-1 p-8">
-          {selectedChapter ? (
-            <div className="max-w-3xl mx-auto">
-              <h1 className="text-2xl font-bold text-gray-800 mb-6">
-                {selectedChapter.title}
-              </h1>
-              <div
-                className="prose prose-blue max-w-none text-gray-600"
-                dangerouslySetInnerHTML={{ __html: selectedChapter.content }}
-              />
-              <div className="mt-8 pt-6 border-t flex items-center justify-between">
-                <span className="text-gray-500">
-                  学习时长：{selectedChapter.duration} 分钟
-                </span>
-                {!selectedChapter.is_completed && (
-                  <button
-                    onClick={() => markComplete(selectedChapter.id)}
-                    disabled={saving}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {saving ? '保存中...' : '标记已完成'}
-                  </button>
-                )}
-                {selectedChapter.is_completed && (
-                  <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg">
-                    ✓ 已完成
-                  </span>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center text-gray-500 py-20">
-              请选择一个章节开始学习
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
-  );
+  )
 }

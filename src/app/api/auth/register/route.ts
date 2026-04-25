@@ -1,54 +1,43 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+export const dynamic = 'force-dynamic'
 
-export async function POST(request: Request) {
+import { NextRequest, NextResponse } from 'next/server'
+import { getSupabase } from '@/lib/supabase'
+
+export async function POST(request: NextRequest) {
   try {
-    const { phone, password, name } = await request.json();
+    const { phone, password, name } = await request.json()
 
     if (!phone || !password) {
-      return NextResponse.json({ error: '请输入手机号和密码' }, { status: 400 });
+      return NextResponse.json({ success: false, error: '请填写所有必填项' }, { status: 400 })
     }
 
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
-      return NextResponse.json({ error: '请输入正确的手机号' }, { status: 400 });
-    }
-
-    if (!supabase) {
-      return NextResponse.json({ error: '数据库未配置' }, { status: 500 });
-    }
-
-    // 检查手机号是否已注册
-    const { data: existing } = await supabase
+    // 检查手机号是否已存在
+    const { data: existing } = await getSupabase()
       .from('users')
       .select('id')
       .eq('phone', phone)
-      .single();
+      .single()
 
     if (existing) {
-      return NextResponse.json({ error: '该手机号已注册' }, { status: 400 });
+      return NextResponse.json({ success: false, error: '该手机号已注册' }, { status: 400 })
     }
 
     // 创建用户
-    const { data: user, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
-      .insert({ phone, password, name })
+      .insert({ phone, password, name: name || '' })
       .select()
-      .single();
+      .single()
 
-    if (error || !user) {
-      return NextResponse.json({ error: '注册失败' }, { status: 500 });
+    if (error) {
+      return NextResponse.json({ success: false, error: '注册失败' }, { status: 500 })
     }
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user.id,
-        phone: user.phone,
-        name: user.name
-      }
-    });
+    return NextResponse.json({ 
+      success: true, 
+      user: { id: data.id, phone: data.phone, name: data.name } 
+    })
   } catch (error) {
-    console.error('Register error:', error);
-    return NextResponse.json({ error: '注册失败' }, { status: 500 });
+    return NextResponse.json({ success: false, error: '注册失败' }, { status: 500 })
   }
 }
