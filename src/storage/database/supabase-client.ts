@@ -104,12 +104,6 @@ function getSupabaseClient(token?: string): SupabaseClient {
   if (token) {
     globalOptions.headers = { Authorization: `Bearer ${token}` };
   }
-  try {
-    if (buffer) {
-    }
-  } catch {
-    // Silent — reporting setup failure should not block client creation
-  }
 
   return createClient(url, key, {
     global: globalOptions,
